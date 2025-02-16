@@ -60,19 +60,39 @@ class Simulation:
         old_state = -1
         old_action = -1
 
-        while self._step < self._max_steps:
+        state_sequence = []
+        predicted_sum_neg_reward = 0
 
+        while self._step < self._max_steps:
             # get current state of the intersection
             current_state = self._get_state()
 
+            # Add current state to sequence
+            state_sequence.append(current_state)
+            if len(state_sequence) > 9:
+                state_sequence.pop(0)
+
             # calculate reward of previous action: (change in cumulative waiting time between actions)
-            # waiting time = seconds waited by a car since the spawn in the environment, cumulated for every car in incoming lanes
             current_total_wait = self._collect_waiting_times()
-            reward = old_total_wait - current_total_wait
+            actual_reward = old_total_wait - current_total_wait
+
+            # If we have 9 states, predict the 10th using LSTM
+            if len(state_sequence) == 9 and self._lstm_model is not None:
+                lstm_input = np.array([state_sequence])
+                predicted_state = self._lstm_model.predict(lstm_input)[0]
+                
+                # Calculate reward using 9 SUMO states and 1 LSTM predicted state
+                predicted_sequence = state_sequence[1:] + [predicted_state]
+                predicted_total_wait = self._calculate_wait_from_states(predicted_sequence)
+                predicted_reward = old_total_wait - predicted_total_wait
+
+                # Accumulate predicted negative reward
+                if predicted_reward < 0:
+                    predicted_sum_neg_reward += predicted_reward
 
             # saving the data into the memory
             if self._step != 0:
-                self._Memory.add_sample((old_state, old_action, reward, current_state))
+                self._Memory.add_sample((old_state, old_action, actual_reward, current_state))
 
             # choose the light phase to activate, based on the current state of the intersection
             action = self._choose_action(current_state, epsilon)
@@ -92,11 +112,16 @@ class Simulation:
             old_total_wait = current_total_wait
 
             # saving only the meaningful reward to better see if the agent is behaving correctly
-            if reward < 0:
-                self._sum_neg_reward += reward
+            if actual_reward < 0:
+                self._sum_neg_reward += actual_reward
+
+            self._step += 1
 
         self._save_episode_stats()
-        print("Total reward:", self._sum_neg_reward, "- Epsilon:", round(epsilon, 2))
+        print(f"Episode {episode}:")
+        print(f"Actual - Total reward: {self._sum_neg_reward}, Epsilon: {round(epsilon, 2)}")
+        print(f"Predicted - Total reward: {predicted_sum_neg_reward}, Epsilon: {round(epsilon, 2)}")
+        
         traci.close()
         simulation_time = round(timeit.default_timer() - start_time, 1)
 
@@ -106,7 +131,7 @@ class Simulation:
             self._replay()
         training_time = round(timeit.default_timer() - start_time, 1)
 
-        return simulation_time, training_time, self._sum_neg_reward, epsilon # Modified return
+        return simulation_time, training_time, self._sum_neg_reward, predicted_sum_neg_reward, epsilon
 
 
     def _choose_action(self, state, epsilon):
@@ -133,6 +158,12 @@ class Simulation:
 
         yellow_phase_code = old_action * 2 + 1
         traci.trafficlight.setPhase("TL", yellow_phase_code)
+
+    def _calculate_wait_from_states(self, state_sequence):
+        # This is a placeholder. You'll need to implement logic to estimate
+        # waiting time based on the state representation you're using.
+        # This might involve counting cars in certain cells, for example.
+        return sum(np.sum(state) for state in state_sequence)
 
     def _set_green_phase(self, action_number):
         """

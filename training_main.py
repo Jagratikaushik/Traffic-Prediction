@@ -101,14 +101,13 @@ if __name__ == "__main__":
         print('\n----- Episode', str(episode + 1), 'of', str(config['total_episodes']))
         epsilon = 1.0 - (episode / config['total_episodes'])
         
-        # Call run on the Simulation instance
-        simulation_time, training_time, total_reward, current_epsilon = Simulation.run(episode, epsilon)
-        
-        print('Simulation time:', simulation_time, 's - Training time:', training_time, 's - Total:',
-            round(simulation_time + training_time, 1), 's')
+        simulation_time, training_time, actual_total_reward, predicted_total_reward, current_epsilon = Simulation.run(episode, epsilon)
 
-        # Print the total reward and epsilon here
-        print(f"Total reward: {total_reward} - Epsilon: {current_epsilon}")
+        print(f"Episode {episode + 1}:")
+        print(f"Actual - Total reward: {actual_total_reward}, Epsilon: {current_epsilon}")
+        print(f"Predicted - Total reward: {predicted_total_reward}, Epsilon: {current_epsilon}")
+        print(f'Simulation time: {simulation_time}s - Training time: {training_time}s - Total: {round(simulation_time + training_time, 1)}s')
+
 
         print("\n----- LSTM Training and Validation -----")
 
