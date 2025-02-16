@@ -1,4 +1,4 @@
-# Modified training_main.py
+# training_main.py
 from __future__ import absolute_import, print_function
 
 import os
@@ -77,10 +77,9 @@ if __name__ == "__main__":
     lstm_sequence_length = 9
     # Dummy data for creating the LSTM model initially
     dummy_X = np.random.rand(1, lstm_sequence_length, config['num_states'])
-    # Create and inject LSTM model with sigmoid activation into Simulation class:
-    input_shape = (9, config['num_states'])  # Sequence length is now fixed at 9 for predictions.
-    lstm_model_with_sigmoid = create_lstm_model(input_shape=input_shape)
-    Simulation.set_lstm_model(lstm_model_with_sigmoid)
+    input_shape = (dummy_X.shape[1], dummy_X.shape[2])
+    lstm_model = create_lstm_model(input_shape)
+    Simulation.set_lstm_model(lstm_model) # Inject the lstm model into the simulation class
 
     while episode < config['total_episodes']:
         print('\n----- Episode', str(episode + 1), 'of', str(config['total_episodes']))
@@ -126,4 +125,3 @@ if __name__ == "__main__":
                                      ylabel='Cumulative delay (s)')
     Visualization.save_data_and_plot(data=Simulation.avg_queue_length_store, filename='queue', xlabel='Episode',
                                      ylabel='Average queue length (vehicles)')
-

@@ -45,79 +45,88 @@ class Simulation:
         Predicts and prints binary states using sigmoid activation.
         """
         start_time = timeit.default_timer()
+        simulation_time = 0
+        training_time = 0
 
-        # first, generate the route file for this simulation and set up sumo
-        self._TrafficGen.generate_routefile(seed=episode)
-        traci.start(self._sumo_cmd)
-        print("Simulating...")
+        try:
+            # first, generate the route file for this simulation and set up sumo
+            self._TrafficGen.generate_routefile(seed=episode)
+            traci.start(self._sumo_cmd)
+            print("Simulating...")
 
-        # inits
-        self._step = 0
-        old_total_wait = 0
-        old_state = -1
-        old_action = -1
-        self._sum_queue_length = 0  # Reset queue length sum at the beginning of each episode
-        self._sum_waiting_time = 0  # Reset waiting time sum at the beginning of each episode
+            # inits
+            self._step = 0
+            old_total_wait = 0
+            old_state = -1
+            old_action = -1
+            self._sum_queue_length = 0  # Reset queue length sum at the beginning of each episode
+            self._sum_waiting_time = 0  # Reset waiting time sum at the beginning of each episode
 
+            state_sequence = []  # Keep track of the last 9 states
 
-        state_sequence = []  # Keep track of the last 9 states
+            # Inside Simulation.run()
+            while self._step < self._max_steps:
+                current_state = self._get_state()
 
-        # Inside Simulation.run()
-        while self._step < self._max_steps:
-            current_state = self._get_state()
+                # Choose an action based on epsilon-greedy policy
+                if random.random() < epsilon:
+                    action = random.randint(0, self._num_actions - 1)  # Random action (exploration)
+                else:
+                    action = np.argmax(self._Model.predict_one(current_state))  # Best action (exploitation)
 
-            # Choose an action based on epsilon-greedy policy
-            if random.random() < epsilon:
-                action = random.randint(0, self._num_actions - 1)  # Random action (exploration)
-            else:
-                action = np.argmax(self._Model.predict_one(current_state))  # Best action (exploitation)
+                # Ensure old_action is valid before calling _set_yellow_phase
+                if self._step != 0 and old_action != -1 and old_action != action:
+                    self._set_yellow_phase(old_action)  # Only call if old_action is valid
+                    self._simulate(self._yellow_duration)
 
-            # Ensure old_action is valid before calling _set_yellow_phase
-            if self._step != 0 and old_action != -1 and old_action != action:
-                self._set_yellow_phase(old_action)  # Only call if old_action is valid
-                self._simulate(self._yellow_duration)
+                # Set green phase for the current action
+                self._set_green_phase(action)
+                self._simulate(self._green_duration)
 
-            # Set green phase for the current action
-            self._set_green_phase(action)
-            self._simulate(self._green_duration)
+                # Update old_action
+                old_action = action
 
-            # Update old_action
-            old_action = action
+                # Store the current state with the timestamp
+                self.state_dataset.append((self._step, current_state.tolist()))  # Store as a tuple (timestamp, state) Convert numpy array to list
 
-            # Store the current state with the timestamp
-            self.state_dataset.append((self._step, current_state.tolist()))  # Store as a tuple (timestamp, state) Convert numpy array to list
+                # LSTM Prediction Logic
+                state_sequence.append(current_state)
+                if len(state_sequence) > 9:
+                    state_sequence.pop(0)  # Keep only the last 9 states
 
-            # LSTM Prediction Logic
-            state_sequence.append(current_state)
-            if len(state_sequence) > 9:
-                state_sequence.pop(0)  # Keep only the last 9 states
+                    if self._lstm_model is not None:  # Check if LSTM model is loaded
+                        # Prepare input for LSTM
+                        lstm_input = np.array([state_sequence])  # Shape: (1, 9, num_states)
 
-                if self._lstm_model is not None:  # Check if LSTM model is loaded
-                    # Prepare input for LSTM
-                    lstm_input = np.array([state_sequence])  # Shape: (1, 9, num_states)
+                        # Make prediction
+                        predicted_state = self._lstm_model.predict(lstm_input)
+                        predicted_state_binary = (predicted_state > 0.5).astype(int)
 
-                    # Make prediction
-                    predicted_state = self._lstm_model.predict(lstm_input)
-                    predicted_state_binary = (predicted_state > 0.5).astype(int)
+                        # Print predicted and actual states (for the first state in the sequence)
+                        print(f"Step: {self._step}")
+                        print("Predicted State:", predicted_state_binary[0])  # Access the first element of the batch
+                        print("Actual State:", current_state) # compare with current state
 
-                    # Print predicted and actual states (for the first state in the sequence)
-                    print(f"Step: {self._step}")
-                    print("Predicted State:", predicted_state_binary[0])  # Access the first element of the batch
-                    print("Actual State:", current_state) # compare with current state
+                self._step += 1
 
-            self._step += 1
+            traci.close()
+            simulation_time = round(timeit.default_timer() - start_time, 1)
 
-        traci.close()
+            print("Training...")
+            start_time = timeit.default_timer()
+            for _ in range(self._training_epochs):
+                self._replay()
+            training_time = round(timeit.default_timer() - start_time, 1)
 
-        start_time = timeit.default_timer()
-    
-        # ... existing code ...
+        except Exception as e:
+            print(f"An error occurred during the simulation: {e}")
+            simulation_time = 0
+            training_time = 0
 
-        end_time = timeit.default_timer()
-        simulation_time = end_time - start_time
-        training_time = 0  # You may want to calculate this if you have a separate training step
-
-        return simulation_time, training_time
+        finally:
+            # Save the state dataset to a CSV file after the episode finishes
+            self.save_state_dataset_to_csv(episode)
+            return simulation_time, training_time
 
 
     def _simulate(self, steps_todo):
