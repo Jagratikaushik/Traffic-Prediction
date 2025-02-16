@@ -26,7 +26,7 @@ if __name__ == "__main__":
     config = import_train_configuration(config_file='training_settings.ini')
     sumo_cmd = set_sumo(config['gui'], config['sumocfg_file_name'], config['max_steps'])
     path = set_train_path(config['models_path_name'], config['model_to_use'])
-    
+
     # Create a directory for state data
     state_data_path = os.path.join(path, 'state_data')
     os.makedirs(state_data_path, exist_ok=True)
@@ -100,9 +100,15 @@ if __name__ == "__main__":
     while episode < config['total_episodes']:
         print('\n----- Episode', str(episode + 1), 'of', str(config['total_episodes']))
         epsilon = 1.0 - (episode / config['total_episodes'])
-        simulation_time, training_time = Simulation.run(episode, epsilon)
+        
+        # Call run on the Simulation instance
+        simulation_time, training_time, total_reward, current_epsilon = Simulation.run(episode, epsilon)
+        
         print('Simulation time:', simulation_time, 's - Training time:', training_time, 's - Total:',
-              round(simulation_time + training_time, 1), 's')
+            round(simulation_time + training_time, 1), 's')
+
+        # Print the total reward and epsilon here
+        print(f"Total reward: {total_reward} - Epsilon: {current_epsilon}")
 
         print("\n----- LSTM Training and Validation -----")
 
@@ -111,11 +117,10 @@ if __name__ == "__main__":
             print("Skipping LSTM training due to insufficient or missing data.")
         else:
             # Split data into training and validation sets
-            X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)  # Adjust test_size as needed
+            X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
 
-            # input_shape = (X_train.shape[1], X_train.shape[2]) # this line is redundant
             train_lstm_model(lstm_model, X_train, y_train, save_path=path)
-            Simulation.set_lstm_model(lstm_model) # Inject the trained lstm model into the simulation class
+            Simulation.set_lstm_model(lstm_model)
 
             # Make predictions on the validation set
             y_pred = lstm_model.predict(X_val)
@@ -125,6 +130,8 @@ if __name__ == "__main__":
             print(f"Validation Mean Squared Error: {mse:.4f}")
 
         episode += 1
+
+
 
     print("\n----- Start time:", timestamp_start)
     print("----- End time:", datetime.datetime.now())

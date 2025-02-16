@@ -1,3 +1,4 @@
+# model.py
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress TensorFlow warnings
 import tensorflow as tf
@@ -19,6 +20,7 @@ class TrainModel:
         self._batch_size = batch_size
         self._learning_rate = learning_rate
         self._model = self._build_model(num_layers, width)
+        self._optimizer = None # Initialize optimizer to None
 
     def _build_model(self, num_layers, width):
         """
@@ -31,7 +33,7 @@ class TrainModel:
         outputs = layers.Dense(self._output_dim, activation='linear')(x)
 
         model = keras.Model(inputs=inputs, outputs=outputs, name='my_model')
-        model.compile(loss=losses.mean_squared_error, optimizer=Adam(learning_rate=self._learning_rate))
+        #Note that the model is not compiled here 
         return model
 
     def predict_one(self, state):
@@ -67,9 +69,13 @@ class TrainModel:
         model_path = os.path.join(path, 'trained_model.h5')
         if os.path.isfile(model_path):
             self._model = load_model(model_path)
+            self._optimizer = Adam(learning_rate=self._learning_rate) # Create the optimizer after loading model
+            self._model.compile(loss=losses.mean_squared_error, optimizer=self._optimizer) # Compile model after loading it
             print(f"Model loaded successfully from {model_path}")
         else:
             print(f"No model found at {model_path}. Using the initial model.")
+            self._optimizer = Adam(learning_rate=self._learning_rate) # Creates the optimizer even if no saved model was found
+            self._model.compile(loss=losses.mean_squared_error, optimizer=self._optimizer) # Compile model even if no saved model was found
 
     @property
     def input_dim(self):
@@ -82,32 +88,3 @@ class TrainModel:
     @property
     def batch_size(self):
         return self._batch_size
-
-
-class TestModel:
-    def __init__(self, input_dim, model_path):
-        self._input_dim = input_dim
-        self._model = self._load_my_model(model_path)
-
-    def _load_my_model(self, model_folder_path):
-        """
-        Load the model stored in the folder specified by the model number, if it exists
-        """
-        model_file_path = os.path.join(model_folder_path, 'trained_model.h5')
-        
-        if os.path.isfile(model_file_path):
-            loaded_model = load_model(model_file_path)
-            return loaded_model
-        else:
-            sys.exit("Model number not found")
-
-    def predict_one(self, state):
-        """
-        Predict the action values from a single state
-        """
-        state = np.reshape(state, [1, self._input_dim])
-        return self._model.predict(state)
-
-    @property
-    def input_dim(self):
-        return self._input_dim
