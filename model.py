@@ -60,6 +60,17 @@ class TrainModel:
         self._model.save(os.path.join(path, 'trained_model.h5'))
         plot_model(self._model, to_file=os.path.join(path, 'model_structure.png'), show_shapes=True, show_layer_names=True)
 
+    def load_model(self, path):
+        """
+        Load a saved model from the specified path
+        """
+        model_path = os.path.join(path, 'trained_model.h5')
+        if os.path.isfile(model_path):
+            self._model = load_model(model_path)
+            print(f"Model loaded successfully from {model_path}")
+        else:
+            print(f"No model found at {model_path}. Using the initial model.")
+
     @property
     def input_dim(self):
         return self._input_dim

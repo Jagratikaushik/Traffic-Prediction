@@ -25,11 +25,14 @@ if __name__ == "__main__":
 
     config = import_train_configuration(config_file='training_settings.ini')
     sumo_cmd = set_sumo(config['gui'], config['sumocfg_file_name'], config['max_steps'])
-    path = set_train_path(config['models_path_name'])
-
+    path = set_train_path(config['models_path_name'], config['model_to_use'])
+    
     # Create a directory for state data
     state_data_path = os.path.join(path, 'state_data')
     os.makedirs(state_data_path, exist_ok=True)
+
+    # Load or Create the TrainModel (DQN Model)
+    model_file = os.path.join(path, "trained_model.h5")  # Define the model file path
 
     Model = TrainModel(
         config['num_layers'],
@@ -39,6 +42,12 @@ if __name__ == "__main__":
         input_dim=config['num_states'],
         output_dim=config['num_actions']
     )
+
+    if os.path.exists(model_file):
+        print("Loading existing DQN model...")
+        Model.load_model(path)  # Load the existing model
+    else:
+        print("Creating a new DQN model...")
 
     Memory = Memory(
         config['memory_size_max'],
@@ -73,12 +82,19 @@ if __name__ == "__main__":
     episode = 0
     timestamp_start = datetime.datetime.now()
 
-    # Create LSTM model (outside the episode loop)
+    # Load or Create the LSTM model
+    lstm_model_file = os.path.join(path, "lstm_traffic_model.h5")
     lstm_sequence_length = 9
-    # Dummy data for creating the LSTM model initially
-    dummy_X = np.random.rand(1, lstm_sequence_length, config['num_states'])
-    input_shape = (dummy_X.shape[1], dummy_X.shape[2])
-    lstm_model = create_lstm_model(input_shape)
+    input_shape = (lstm_sequence_length, config['num_states'])
+
+    if os.path.exists(lstm_model_file):
+        print("Loading existing LSTM model...")
+        lstm_model = create_lstm_model(input_shape)  # Create the model architecture first
+        lstm_model.load_weights(lstm_model_file) # Load the saved weights
+    else:
+        print("Creating a new LSTM model...")
+        lstm_model = create_lstm_model(input_shape)
+
     Simulation.set_lstm_model(lstm_model) # Inject the lstm model into the simulation class
 
     while episode < config['total_episodes']:
@@ -97,8 +113,7 @@ if __name__ == "__main__":
             # Split data into training and validation sets
             X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)  # Adjust test_size as needed
 
-            input_shape = (X_train.shape[1], X_train.shape[2])
-            # lstm_model = create_lstm_model(input_shape) # no need to create the lstm model every episode, it already has
+            # input_shape = (X_train.shape[1], X_train.shape[2]) # this line is redundant
             train_lstm_model(lstm_model, X_train, y_train, save_path=path)
             Simulation.set_lstm_model(lstm_model) # Inject the trained lstm model into the simulation class
 
